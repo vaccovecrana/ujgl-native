@@ -1,0 +1,14 @@
+.DS_Store
+.vscode/
+*.iml
+.idea/
+.gradle/
+gradle/
+gradlew*
+build/
+bin/
+
+*.zip
+
+glfw-build/
+glfw-src/
