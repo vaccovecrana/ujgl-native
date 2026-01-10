@@ -20,7 +20,8 @@ class vulkan_h_6 extends vulkan_h$shared {
 
     static final Arena LIBRARY_ARENA = Arena.ofAuto();
 
-    static final SymbolLookup SYMBOL_LOOKUP = SymbolLookup.loaderLookup()
+    static final SymbolLookup SYMBOL_LOOKUP = SymbolLookup.libraryLookup(System.mapLibraryName("vulkan"), LIBRARY_ARENA)
+            .or(SymbolLookup.loaderLookup())
             .or(Linker.nativeLinker().defaultLookup());
 
     private static final int VULKAN_H_ = (int)1L;

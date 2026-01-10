@@ -1,3 +1,7 @@
+configure<io.vacco.oss.gitflow.GsPluginProfileExtension> {
+  addJ8Spec()
+}
+
 tasks.withType<JavaCompile>().configureEach {
   options.compilerArgs.add("-Xlint:none")
   options.compilerArgs.add("-nowarn")
