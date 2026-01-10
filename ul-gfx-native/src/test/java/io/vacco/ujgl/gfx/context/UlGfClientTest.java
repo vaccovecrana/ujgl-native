@@ -147,7 +147,13 @@ public class UlGfClientTest {
         @Override
         public boolean onRender(MemorySegment window) {
           int count = renderCount.incrementAndGet();
-          return count < 3;
+          try {
+            System.out.println("window render");
+            Thread.sleep(1000);
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+          return count < 6;
         }
 
         @Override
@@ -158,7 +164,7 @@ public class UlGfClientTest {
       };
 
       UlGfContext.runWithWindow(640, 480, "Render Exit Test", client);
-      assertEquals("Loop should exit after onRender returns false", 3, renderCount.get());
+      assertEquals("Loop should exit after onRender returns false", 6, renderCount.get());
     });
 
     it("should cleanup callbacks on window destroy", () -> {
