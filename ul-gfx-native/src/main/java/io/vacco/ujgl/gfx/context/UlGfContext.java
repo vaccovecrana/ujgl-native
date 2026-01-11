@@ -22,6 +22,18 @@ public class UlGfContext {
   }
 
   /**
+   * Resizes a GLFW window, triggering window and framebuffer resize callbacks.
+   * Use this to test window-driven swapchain recreation.
+   *
+   * @param window The GLFW window handle
+   * @param width  New window width
+   * @param height New window height
+   */
+  public static void resizeWindow(MemorySegment window, int width, int height) {
+    glfw3_h.glfwSetWindowSize(window, width, height);
+  }
+
+  /**
    * Runs a task in a headless GLFW context (no window).
    *
    * @param task The task to run
