@@ -11,11 +11,13 @@ public interface UlGfClient {
   /**
    * Called once the window is created, shown, and ready for rendering.
    * Initialize graphics resources here (e.g., Vulkan surface, swapchain).
-   * Query initial sizes if needed.
+   * The framebuffer size is provided to handle HiDPI displays correctly.
    *
    * @param window GLFW window handle
+   * @param framebufferWidth  Actual framebuffer width in pixels (handles HiDPI scaling)
+   * @param framebufferHeight Actual framebuffer height in pixels (handles HiDPI scaling)
    */
-  void onWindowReady(MemorySegment window);
+  void onWindowReady(MemorySegment window, int framebufferWidth, int framebufferHeight);
 
   /**
    * Called when the window size changes (screen coordinates).

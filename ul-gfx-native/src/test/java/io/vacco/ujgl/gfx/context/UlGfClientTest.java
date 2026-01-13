@@ -29,9 +29,11 @@ public class UlGfClientTest {
       
       var client = new UlGfClient() {
         @Override
-        public void onWindowReady(MemorySegment window) {
+        public void onWindowReady(MemorySegment window, int framebufferWidth, int framebufferHeight) {
           assertNotNull("Window should not be null", window);
           assertNotEquals("Window should not be NULL segment", MemorySegment.NULL, window);
+          assertTrue("Framebuffer width should be positive", framebufferWidth > 0);
+          assertTrue("Framebuffer height should be positive", framebufferHeight > 0);
           readyCalled.set(true);
         }
 
@@ -61,7 +63,7 @@ public class UlGfClientTest {
       
       var client = new UlGfClient() {
         @Override
-        public void onWindowReady(MemorySegment window) {}
+        public void onWindowReady(MemorySegment window, int framebufferWidth, int framebufferHeight) {}
 
         @Override
         public void onWindowResize(MemorySegment window, int width, int height) {}
@@ -93,7 +95,7 @@ public class UlGfClientTest {
       
       var client = new UlGfClient() {
         @Override
-        public void onWindowReady(MemorySegment window) {
+        public void onWindowReady(MemorySegment window, int framebufferWidth, int framebufferHeight) {
           glfw3_h.glfwSetWindowSize(window, 800, 600);
         }
 
@@ -130,7 +132,7 @@ public class UlGfClientTest {
       
       var client = new UlGfClient() {
         @Override
-        public void onWindowReady(MemorySegment window) {
+        public void onWindowReady(MemorySegment window, int framebufferWidth, int framebufferHeight) {
           System.out.println("window ready");
         }
 
@@ -170,7 +172,7 @@ public class UlGfClientTest {
     it("should cleanup callbacks on window destroy", () -> {
       var client = new UlGfClient() {
         @Override
-        public void onWindowReady(MemorySegment window) {}
+        public void onWindowReady(MemorySegment window, int framebufferWidth, int framebufferHeight) {}
 
         @Override
         public void onWindowResize(MemorySegment window, int width, int height) {}

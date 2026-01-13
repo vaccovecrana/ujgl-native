@@ -8,6 +8,7 @@ import io.vacco.ujgl.gfx.nativelib.UlNative;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -51,11 +52,14 @@ public class UlGfContext {
 
   /**
    * Runs a GLFW windowed application with full lifecycle callbacks.
-   * The window is initially hidden and shown after setup.
+   * Window is created visible (lightweightvk approach) to allow compositor to apply DPI scaling.
    * Manages the main loop, polling events and calling onRender until exit.
+   * 
+   * Handles HiDPI displays by creating visible window immediately and querying framebuffer size
+   * after compositor has applied scaling (following lightweightvk pattern).
    *
-   * @param width  Window width
-   * @param height Window height
+   * @param width  Window width (may be scaled by HiDPI)
+   * @param height Window height (may be scaled by HiDPI)
    * @param title  Window title
    * @param client Client implementing lifecycle callbacks
    */
@@ -67,7 +71,6 @@ public class UlGfContext {
     try (var arena = Arena.ofConfined()) {
       // Configure window for Vulkan (no OpenGL context)
       glfw3_h.glfwWindowHint(glfw3_h.GLFW_CLIENT_API(), glfw3_h.GLFW_NO_API());
-      glfw3_h.glfwWindowHint(glfw3_h.GLFW_VISIBLE(), glfw3_h.GLFW_FALSE());
       glfw3_h.glfwWindowHint(glfw3_h.GLFW_SCALE_TO_MONITOR(), glfw3_h.GLFW_FALSE());
 
       var titleSeg = arena.allocateFrom(title, StandardCharsets.UTF_8);
@@ -78,13 +81,21 @@ public class UlGfContext {
       }
 
       try {
+        // Setup callbacks BEFORE querying size (lightweightvk order)
         setupCallbacks(window, client, arena);
         
-        glfw3_h.glfwShowWindow(window);
-        client.onWindowReady(window);
+        // Query actual framebuffer size (lightweightvk approach)
+        // Window is already visible, so compositor has applied scaling
+        try (var sizeArena = Arena.ofConfined()) {
+          var pWidth = sizeArena.allocate(ValueLayout.JAVA_INT);
+          var pHeight = sizeArena.allocate(ValueLayout.JAVA_INT);
+          glfw3_h.glfwGetFramebufferSize(window, pWidth, pHeight);
+          int fbWidth = pWidth.get(ValueLayout.JAVA_INT, 0);
+          int fbHeight = pHeight.get(ValueLayout.JAVA_INT, 0);
+          client.onWindowReady(window, fbWidth, fbHeight);
+        }
         
         mainLoop(window, client);
-        
       } finally {
         clearCallbacks(window);
         glfw3_h.glfwDestroyWindow(window);
