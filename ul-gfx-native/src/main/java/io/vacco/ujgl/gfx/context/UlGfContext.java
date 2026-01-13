@@ -54,7 +54,7 @@ public class UlGfContext {
    * Runs a GLFW windowed application with full lifecycle callbacks.
    * Window is created visible (lightweightvk approach) to allow compositor to apply DPI scaling.
    * Manages the main loop, polling events and calling onRender until exit.
-   * 
+   * <p />
    * Handles HiDPI displays by creating visible window immediately and querying framebuffer size
    * after compositor has applied scaling (following lightweightvk pattern).
    *
@@ -75,6 +75,7 @@ public class UlGfContext {
 
       var titleSeg = arena.allocateFrom(title, StandardCharsets.UTF_8);
       var window = glfw3_h.glfwCreateWindow(width, height, titleSeg, MemorySegment.NULL, MemorySegment.NULL);
+      var closed = new boolean[1];
       
       if (window == null || window.equals(MemorySegment.NULL)) {
         throw new RuntimeException("Failed to create GLFW window");
@@ -82,8 +83,20 @@ public class UlGfContext {
 
       try {
         // Setup callbacks BEFORE querying size (lightweightvk order)
-        setupCallbacks(window, client, arena);
-        
+        var windowSizeCallback = GLFWwindowsizefun.allocate(client::onWindowResize, arena);
+        glfw3_h.glfwSetWindowSizeCallback(window, windowSizeCallback);
+        var framebufferSizeCallback = GLFWframebuffersizefun.allocate(client::onFramebufferResize, arena);
+        glfw3_h.glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+        var closeCallback = GLFWwindowclosefun.allocate(
+          (win) -> {
+            closed[0] = client.onWindowClose(win);
+            if (!closed[0]) {
+              glfw3_h.glfwSetWindowShouldClose(win, glfw3_h.GLFW_FALSE());
+            }
+          }, arena
+        );
+        glfw3_h.glfwSetWindowCloseCallback(window, closeCallback);
+
         // Query actual framebuffer size (lightweightvk approach)
         // Window is already visible, so compositor has applied scaling
         try (var sizeArena = Arena.ofConfined()) {
@@ -94,8 +107,13 @@ public class UlGfContext {
           int fbHeight = pHeight.get(ValueLayout.JAVA_INT, 0);
           client.onWindowReady(window, fbWidth, fbHeight);
         }
-        
-        mainLoop(window, client);
+
+        while (glfw3_h.glfwWindowShouldClose(window) == 0 && !closed[0]) {
+          glfw3_h.glfwPollEvents();
+          if (!client.onRender(window)) {
+            break;
+          }
+        }
       } finally {
         clearCallbacks(window);
         glfw3_h.glfwDestroyWindow(window);
@@ -105,40 +123,10 @@ public class UlGfContext {
     }
   }
 
-  private static void setupCallbacks(MemorySegment window, UlGfClient client, Arena arena) {
-    var windowSizeCallback = GLFWwindowsizefun.allocate(
-      (win, w, h) -> client.onWindowResize(win, w, h), arena
-    );
-    glfw3_h.glfwSetWindowSizeCallback(window, windowSizeCallback);
-
-    var framebufferSizeCallback = GLFWframebuffersizefun.allocate(
-      (win, w, h) -> client.onFramebufferResize(win, w, h), arena
-    );
-    glfw3_h.glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-
-    var closeCallback = GLFWwindowclosefun.allocate(
-      (win) -> {
-        if (!client.onWindowClose(win)) {
-          glfw3_h.glfwSetWindowShouldClose(win, glfw3_h.GLFW_FALSE());
-        }
-      }, arena
-    );
-    glfw3_h.glfwSetWindowCloseCallback(window, closeCallback);
-  }
-
   private static void clearCallbacks(MemorySegment window) {
     glfw3_h.glfwSetWindowSizeCallback(window, MemorySegment.NULL);
     glfw3_h.glfwSetFramebufferSizeCallback(window, MemorySegment.NULL);
     glfw3_h.glfwSetWindowCloseCallback(window, MemorySegment.NULL);
-  }
-
-  private static void mainLoop(MemorySegment window, UlGfClient client) {
-    while (glfw3_h.glfwWindowShouldClose(window) == 0) {
-      glfw3_h.glfwPollEvents();
-      if (!client.onRender(window)) {
-        break;
-      }
-    }
   }
 
 }

@@ -151,7 +151,7 @@ public class UlGfClientTest {
           int count = renderCount.incrementAndGet();
           try {
             System.out.println("window render");
-            Thread.sleep(1000);
+            Thread.sleep(500);
           } catch (InterruptedException e) {
             throw new RuntimeException(e);
           }
