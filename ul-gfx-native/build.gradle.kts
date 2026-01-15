@@ -22,7 +22,7 @@ tasks.register<Exec>("generateBindings") {
 }
 
 tasks.register<Exec>("buildNative") {
-  description = "Build native libraries (GLFW + JNI wrapper)"
+  description = "Build native libraries"
   group = "build"
 
   val scriptPath = projectDir.resolve("scripts/build-native.sh")

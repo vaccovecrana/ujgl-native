@@ -1,14 +1,15 @@
 #!/bin/bash
 set -e
 
-# Script to generate JNI bindings using jextract
+# Script to generate Panama FFI bindings using jextract for RGFW
 # Usage: ./scripts/generate-bindings.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_BASE="$PROJECT_DIR/src/main/java"
+NATIVE_DIR="$PROJECT_DIR/native"
 
-echo "Generating JNI bindings with jextract..."
+echo "Generating Panama FFI bindings with jextract..."
 
 # Check if jextract is available
 if ! command -v jextract &> /dev/null; then
@@ -26,18 +27,16 @@ echo "Platform: $OS $ARCH"
 # Create output base directory (jextract will create the package structure)
 mkdir -p "$OUTPUT_BASE"
 
-# Find GLFW headers
-# First try downloaded GLFW source, then system headers
-GLFW_HEADER=""
-if [ -d "$PROJECT_DIR/native/glfw/include/GLFW" ]; then
-    GLFW_HEADER="$PROJECT_DIR/native/glfw/include/GLFW/glfw3.h"
-    GLFW_INCLUDE="$PROJECT_DIR/native/glfw/include"
-elif [ -f "/usr/include/GLFW/glfw3.h" ]; then
-    GLFW_HEADER="/usr/include/GLFW/glfw3.h"
-    GLFW_INCLUDE="/usr/include"
+# Find RGFW headers
+RGFW_HEADER=""
+RGFW_INCLUDE=""
+if [ -f "$NATIVE_DIR/RGFW/RGFW.h" ]; then
+    RGFW_HEADER="$NATIVE_DIR/RGFW/RGFW.h"
+    RGFW_INCLUDE="$NATIVE_DIR/RGFW"
+    echo "✓ Found RGFW header: $RGFW_HEADER"
 else
-    echo "Error: GLFW headers not found"
-    echo "Please ensure GLFW is installed or download GLFW source to native/glfw/"
+    echo "✗ RGFW headers not found at $NATIVE_DIR/RGFW/RGFW.h"
+    echo "Please run build-native.sh first to download RGFW"
     exit 1
 fi
 
@@ -53,31 +52,44 @@ else
     exit 1
 fi
 
-echo "GLFW header: $GLFW_HEADER"
-echo "Vulkan include: $VULKAN_INCLUDE"
+# Find Vulkan headers
+VULKAN_INCLUDE=""
+if [ -d "/usr/include/vulkan" ]; then
+    VULKAN_INCLUDE="/usr/include"
+    echo "✓ Found Vulkan headers: /usr/include/vulkan"
+elif [ -d "/usr/local/include/vulkan" ]; then
+    VULKAN_INCLUDE="/usr/local/include"
+    echo "✓ Found Vulkan headers: /usr/local/include/vulkan"
+else
+    echo "✗ Vulkan headers not found"
+    echo "Please install libvulkan-dev package"
+    exit 1
+fi
 
-# Generate GLFW bindings
-# Note: We don't use -l :glfw because we load the library ourselves via NativeLibraryLoader
-# The bindings will use loaderLookup() and defaultLookup() to find symbols in our loaded library
+# Generate RGFW bindings
+# Note: RGFW is a header-only library with inline functions
+# jextract will generate types and callback definitions, but we need manual wrappers for functions
 echo ""
-echo "Generating GLFW bindings..."
+echo "Generating RGFW bindings..."
 jextract \
     --output "$OUTPUT_BASE" \
-    -I "$GLFW_INCLUDE" \
-    -t io.vacco.ujgl.gfx.glfw \
-    -D GLFW_INCLUDE_VULKAN \
-    "$GLFW_HEADER"
+    -I "$RGFW_INCLUDE" \
+    -I "$VULKAN_INCLUDE" \
+    -t io.vacco.ujgl.gfx.rgfw \
+    --header-class-name rgfw_h \
+    -D RGFW_VULKAN \
+    -D RGFW_WAYLAND \
+    "$RGFW_HEADER"
 
 if [ $? -eq 0 ]; then
-    echo "✓ GLFW bindings generated successfully"
+    echo "✓ RGFW bindings generated successfully"
+    echo "  Note: Function wrappers are in UlRgfwFunctions.java (manually maintained)"
 else
-    echo "✗ Failed to generate GLFW bindings"
+    echo "✗ Failed to generate RGFW bindings"
     exit 1
 fi
 
 # Generate Vulkan bindings
-# Note: We don't use -l :vulkan because Vulkan is loaded by the system loader at runtime
-# The bindings will use loaderLookup() and defaultLookup() to find symbols
 echo ""
 echo "Generating Vulkan bindings..."
 jextract \
@@ -85,7 +97,7 @@ jextract \
     -I "$VULKAN_INCLUDE" \
     -t io.vacco.ujgl.gfx.vulkan \
     --header-class-name vulkan_h \
-    "$VULKAN_INCLUDE/vulkan.h" "$VULKAN_INCLUDE/vulkan_core.h"
+    "$VULKAN_INCLUDE/vulkan/vulkan.h"
 
 if [ $? -eq 0 ]; then
     echo "✓ Vulkan bindings generated successfully"
@@ -97,3 +109,8 @@ fi
 echo ""
 echo "All bindings generated successfully!"
 echo "Output directory: $OUTPUT_BASE"
+echo ""
+echo "Summary:"
+echo "  - RGFW types: io.vacco.ujgl.gfx.rgfw.*"
+echo "  - RGFW functions: UlRgfwFunctions.java (manual wrappers)"
+echo "  - Vulkan types: io.vacco.ujgl.gfx.vulkan.*"

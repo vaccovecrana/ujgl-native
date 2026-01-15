@@ -12,7 +12,7 @@ import java.util.Locale;
  */
 public class UlNative {
 
-  private static final String LIBRARY_NAME = "glfw";
+  private static final String LIBRARY_NAME = "RGFW";
   private static boolean loaded = false;
 
   /**
@@ -92,11 +92,11 @@ public class UlNative {
 
   private static String getLibraryFileName(String platform) {
     if (platform.startsWith("linux")) {
-      return "libglfw.so";
+      return "lib" + LIBRARY_NAME + ".so";
     } else if (platform.startsWith("macos")) {
-      return "libglfw.dylib";
+      return LIBRARY_NAME + ".dylib";
     } else if (platform.startsWith("windows")) {
-      return "glfw.dll";
+      return LIBRARY_NAME + ".dll";
     }
     throw new UnsupportedOperationException("Unsupported platform: " + platform);
   }

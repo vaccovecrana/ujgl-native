@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Script to build GLFW3 as static library and create shared library
-# The library is named libglfw.so/dylib/dll so jextract bindings can find it
+# Script to build RGFW as shared library
+# The library is named libRGFW.so/dylib/dll so jextract bindings can find it
 # Usage: ./scripts/build-native.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,38 +12,52 @@ BUILD_DIR="$NATIVE_DIR/build"
 
 # Check for required dependencies on Linux
 if [[ "$(uname -s)" == "Linux"* ]]; then
-    echo "Checking for required development packages..."
-    MISSING_DEPS=()
-    
-    # Wayland packages (preferred) - ECM, pkg-config, and wayland-protocols are required for Wayland support
-    for pkg in libwayland-dev libxkbcommon-dev extra-cmake-modules pkg-config wayland-protocols; do
-        if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
-            MISSING_DEPS+=("$pkg")
-        fi
-    done
-    
-    # X11 packages (fallback)
-    for pkg in libxinerama-dev libxrandr-dev libxi-dev libxcursor-dev libx11-dev; do
-        if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
-            MISSING_DEPS+=("$pkg")
-        fi
-    done
-    
-    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-        echo "✗ Missing required packages:"
-        for pkg in "${MISSING_DEPS[@]}"; do
-            echo "  - $pkg"
-        done
-        echo ""
-        echo "Install with: sudo apt-get install ${MISSING_DEPS[*]}"
-        exit 1
-    fi
-    echo "✓ All required packages are installed"
+	echo "Checking for required development packages..."
+	MISSING_DEPS=()
+
+	# Wayland packages (required for RGFW)
+	for pkg in libwayland-dev libxkbcommon-dev wayland-protocols libwayland-cursor0 libwayland-egl1; do
+		if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+			MISSING_DEPS+=("$pkg")
+		fi
+	done
+
+	# libdecor for Client-Side Decorations (CSD) support
+	for pkg in libdecor-0-dev libdecor-0-plugin-1-gtk; do
+		if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+			MISSING_DEPS+=("$pkg")
+		fi
+	done
+
+	# X11 packages (fallback for RGFW)
+	for pkg in libxrandr-dev libx11-dev; do
+		if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+			MISSING_DEPS+=("$pkg")
+		fi
+	done
+
+	# Build tools
+	for pkg in git wayland-scanner; do
+		if ! command -v "$pkg" &>/dev/null; then
+			MISSING_DEPS+=("$pkg")
+		fi
+	done
+
+	if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+		echo "✗ Missing required packages:"
+		for pkg in "${MISSING_DEPS[@]}"; do
+			echo "  - $pkg"
+		done
+		echo ""
+		echo "Install with: sudo apt-get install ${MISSING_DEPS[*]}"
+		exit 1
+	fi
+	echo "✓ All required packages are installed"
 fi
 
-# GLFW version to download
-GLFW_VERSION="3.3.9"
-GLFW_URL="https://github.com/glfw/glfw/releases/download/${GLFW_VERSION}/glfw-${GLFW_VERSION}.zip"
+# RGFW from GitHub fork with Wayland fixes
+RGFW_VERSION="1.9.0-dev-wayland-fixes"
+RGFW_URL="https://raw.githubusercontent.com/jjzazuet/RGFW/refs/heads/main/RGFW.h"
 
 # Detect platform
 OS="$(uname -s)"
@@ -53,25 +67,22 @@ echo "Building native libraries for platform: $OS $ARCH"
 
 # Determine platform-specific settings
 case "$OS" in
-    Linux*)
-        PLATFORM="linux-x64"
-        SHARED_LIB="libglfw.so"
-        CMAKE_GENERATOR="Unix Makefiles"
-        ;;
-    Darwin*)
-        PLATFORM="macos-x64"
-        SHARED_LIB="libglfw.dylib"
-        CMAKE_GENERATOR="Unix Makefiles"
-        ;;
-    MINGW*|MSYS*|CYGWIN*)
-        PLATFORM="windows-x64"
-        SHARED_LIB="glfw.dll"
-        CMAKE_GENERATOR="MinGW Makefiles"
-        ;;
-    *)
-        echo "Unsupported platform: $OS"
-        exit 1
-        ;;
+Linux*)
+	PLATFORM="linux-x64"
+	SHARED_LIB="libRGFW.so"
+	;;
+Darwin*)
+	PLATFORM="macos-x64"
+	SHARED_LIB="libRGFW.dylib"
+	;;
+MINGW* | MSYS* | CYGWIN*)
+	PLATFORM="windows-x64"
+	SHARED_LIB="RGFW.dll"
+	;;
+*)
+	echo "Unsupported platform: $OS"
+	exit 1
+	;;
 esac
 
 PLATFORM_BUILD_DIR="$BUILD_DIR/$PLATFORM"
@@ -79,130 +90,151 @@ mkdir -p "$PLATFORM_BUILD_DIR"
 
 echo "Platform build directory: $PLATFORM_BUILD_DIR"
 
-# Download and extract GLFW
-GLFW_SRC_DIR="$NATIVE_DIR/glfw-src"
-if [ ! -d "$GLFW_SRC_DIR" ]; then
-    echo ""
-    echo "Downloading GLFW ${GLFW_VERSION}..."
-    GLFW_ZIP="$NATIVE_DIR/glfw-${GLFW_VERSION}.zip"
-    
-    if [ ! -f "$GLFW_ZIP" ]; then
-        curl -L -o "$GLFW_ZIP" "$GLFW_URL"
-    fi
-    
-    echo "Extracting GLFW..."
-    unzip -q "$GLFW_ZIP" -d "$NATIVE_DIR"
-    mv "$NATIVE_DIR/glfw-${GLFW_VERSION}" "$GLFW_SRC_DIR"
-    echo "✓ GLFW extracted to $GLFW_SRC_DIR"
-else
-    echo "✓ GLFW source already exists at $GLFW_SRC_DIR"
-fi
-
-# Build GLFW as static library
-GLFW_BUILD_DIR="$NATIVE_DIR/glfw-build"
-mkdir -p "$GLFW_BUILD_DIR"
+# Download RGFW.h from GitHub fork (always re-download for latest fixes)
+RGFW_SRC_DIR="$NATIVE_DIR/RGFW"
+mkdir -p "$RGFW_SRC_DIR"
 
 echo ""
-echo "Building GLFW as static library..."
-echo "Note: GLFW will prefer Wayland if available, falling back to X11"
-cd "$GLFW_BUILD_DIR"
-
-# Try to configure GLFW
-# GLFW will auto-detect Wayland and X11, preferring Wayland if both are available
-cmake "$GLFW_SRC_DIR" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DGLFW_BUILD_DOCS=OFF \
-    -DGLFW_BUILD_TESTS=OFF \
-    -DGLFW_BUILD_EXAMPLES=OFF \
-    -DGLFW_USE_WAYLAND=ON \
-    -G "$CMAKE_GENERATOR" 2>&1 | tee "$PLATFORM_BUILD_DIR/cmake_config.log"
-
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-    echo ""
-    echo "✗ CMake configuration failed"
-    echo "This usually means missing dependencies. Required packages:"
-    echo "  sudo apt-get install libwayland-dev libxkbcommon-dev extra-cmake-modules pkg-config wayland-protocols libxinerama-dev libxrandr-dev libxi-dev libxcursor-dev libx11-dev"
-    echo ""
-    echo "See cmake_config.log for details: $PLATFORM_BUILD_DIR/cmake_config.log"
-    exit 1
-fi
-
-cmake --build . --config Release
-
-echo "✓ GLFW static library built"
-
-# Find the built GLFW library
-GLFW_LIB=""
-if [ -f "$GLFW_BUILD_DIR/src/libglfw3.a" ]; then
-    GLFW_LIB="$GLFW_BUILD_DIR/src/libglfw3.a"
-elif [ -f "$GLFW_BUILD_DIR/src/Release/libglfw3.a" ]; then
-    GLFW_LIB="$GLFW_BUILD_DIR/src/Release/libglfw3.a"
+echo "Downloading RGFW $RGFW_VERSION from GitHub fork..."
+curl -L "$RGFW_URL" -o "$RGFW_SRC_DIR/RGFW.h"
+if [ $? -eq 0 ]; then
+	echo "✓ RGFW.h downloaded to $RGFW_SRC_DIR"
 else
-    echo "Error: GLFW static library not found"
-    exit 1
+	echo "✗ Failed to download RGFW.h"
+	exit 1
 fi
 
-echo "Found GLFW library: $GLFW_LIB"
+# Generate Wayland protocol headers (required for RGFW on Linux)
+if [[ "$OS" == "Linux"* ]]; then
+	echo ""
+	echo "Generating Wayland protocol headers..."
 
-# No JNI wrapper needed - we're using FFM API, not JNI
+	WAYLAND_PROTOCOLS_DIR="/usr/share/wayland-protocols"
 
-# Link everything into shared library
+	generate_protocol() {
+		local protocol_name="$1"
+		local protocol_file="$2"
+
+		if [ ! -f "$RGFW_SRC_DIR/${protocol_name}.h" ]; then
+			echo "Generating ${protocol_name}.h..."
+			wayland-scanner client-header "$protocol_file" "$RGFW_SRC_DIR/${protocol_name}.h"
+			wayland-scanner private-code "$protocol_file" "$RGFW_SRC_DIR/${protocol_name}.c"
+		fi
+	}
+
+	generate_protocol "xdg-shell" "$WAYLAND_PROTOCOLS_DIR/stable/xdg-shell/xdg-shell.xml"
+	generate_protocol "xdg-decoration-unstable-v1" "$WAYLAND_PROTOCOLS_DIR/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml"
+	generate_protocol "relative-pointer-unstable-v1" "$WAYLAND_PROTOCOLS_DIR/unstable/relative-pointer/relative-pointer-unstable-v1.xml"
+	generate_protocol "pointer-constraints-unstable-v1" "$WAYLAND_PROTOCOLS_DIR/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml"
+	generate_protocol "xdg-output-unstable-v1" "$WAYLAND_PROTOCOLS_DIR/unstable/xdg-output/xdg-output-unstable-v1.xml"
+	generate_protocol "viewporter" "$WAYLAND_PROTOCOLS_DIR/stable/viewporter/viewporter.xml"
+	generate_protocol "fractional-scale-v1" "$WAYLAND_PROTOCOLS_DIR/staging/fractional-scale/fractional-scale-v1.xml"
+	generate_protocol "xdg-toplevel-icon-v1" "$WAYLAND_PROTOCOLS_DIR/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml"
+	generate_protocol "xdg-toplevel-icon-v1" "$WAYLAND_PROTOCOLS_DIR/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml"
+	generate_protocol "viewporter" "$WAYLAND_PROTOCOLS_DIR/stable/viewporter/viewporter.xml"
+	generate_protocol "fractional-scale-v1" "$WAYLAND_PROTOCOLS_DIR/staging/fractional-scale/fractional-scale-v1.xml"
+
+	echo "✓ Wayland protocol headers generated"
+fi
+
+# Build RGFW shared library
 echo ""
-echo "Linking shared library..."
-
-cd "$PLATFORM_BUILD_DIR"
-
+echo "Building RGFW as shared library..."
 case "$OS" in
-    Linux*)
-        # Link GLFW statically and export all symbols so jextract bindings can find them
-        # GLFW supports both Wayland (preferred) and X11 (fallback)
-        # Try to link Xxf86vm - link directly to .so.1 if symlink doesn't exist
-        XF86VM_LIB=""
-        if [ -f "/usr/lib/x86_64-linux-gnu/libXxf86vm.so" ]; then
-            XF86VM_LIB="-lXxf86vm"
-        elif [ -f "/usr/lib/x86_64-linux-gnu/libXxf86vm.so.1" ]; then
-            # Link directly to the versioned library
-            XF86VM_LIB="/usr/lib/x86_64-linux-gnu/libXxf86vm.so.1"
-        fi
-        
-        # Link Wayland libraries first (preferred), then X11 libraries (fallback)
-        # GLFW will auto-detect which backend to use at runtime
-        gcc -shared \
-            -o "$SHARED_LIB" \
-            -Wl,--whole-archive "$GLFW_LIB" -Wl,--no-whole-archive \
-            -lwayland-client -lwayland-cursor -lxkbcommon \
-            -lX11 -lXrandr -lXi -lXcursor -lXinerama -lpthread -ldl -lm \
-            $XF86VM_LIB \
-            -Wl,-rpath,'$ORIGIN' \
-            -Wl,--export-dynamic \
-            -O2
-        ;;
-    Darwin*)
-        # Link GLFW statically and export symbols
-        gcc -shared \
-            -o "$SHARED_LIB" \
-            -Wl,-force_load,"$GLFW_LIB" \
-            -framework Cocoa -framework IOKit -framework CoreVideo \
-            -O2
-        ;;
-    MINGW*|MSYS*|CYGWIN*)
-        # Link GLFW statically and export all symbols
-        gcc -shared \
-            -o "$SHARED_LIB" \
-            "$GLFW_LIB" \
-            -lgdi32 -luser32 -lkernel32 \
-            -Wl,--export-all-symbols \
-            -O2
-        ;;
+Linux*)
+	# Build RGFW with Wayland support
+	# Create a wrapper C file since RGFW.h is header-only
+	cat >"$RGFW_SRC_DIR/rgfw_wrapper.c" <<'EOF'
+#define RGFW_IMPLEMENTATION
+#define RGFW_WAYLAND
+#define RGFW_LIBDECOR
+#define RGFW_VULKAN
+#include "RGFW.h"
+
+/* HiDPI scale accessors for FFI bindings - now in RGFW.h, no longer needed here */
+EOF
+
+	# Collect Wayland protocol .c files (exclude wrapper)
+	WAYLAND_C_FILES=""
+	for cfile in "$RGFW_SRC_DIR"/*.c; do
+		if [ "$(basename "$cfile")" != "rgfw_wrapper.c" ]; then
+			WAYLAND_C_FILES="$WAYLAND_C_FILES $cfile"
+		fi
+	done
+
+	gcc -shared -fPIC \
+		-I "$RGFW_SRC_DIR" \
+		-DRGFW_LIBDECOR \
+		-DRGFW_VULKAN \
+		-DRGFW_EXPORT \
+		$(pkg-config --cflags libdecor-0 vulkan) \
+		-o "$RGFW_SRC_DIR/libRGFW.so" \
+		"$RGFW_SRC_DIR/rgfw_wrapper.c" \
+		$WAYLAND_C_FILES \
+		-lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon -lEGL -lGL \
+		$(pkg-config --libs libdecor-0 vulkan) \
+		2>&1 | tee "$PLATFORM_BUILD_DIR/rgfw_build.log"
+
+	if [ ! -f "$RGFW_SRC_DIR/libRGFW.so" ]; then
+		echo "✗ Failed to build libRGFW.so"
+		echo "See build log: $PLATFORM_BUILD_DIR/rgfw_build.log"
+		exit 1
+	fi
+
+	cp "$RGFW_SRC_DIR/libRGFW.so" "$PLATFORM_BUILD_DIR/$SHARED_LIB"
+	;;
+Darwin*)
+	# Build RGFW for macOS
+	cat >"$RGFW_SRC_DIR/rgfw_wrapper.c" <<'EOF'
+#define RGFW_IMPLEMENTATION
+#include "RGFW.h"
+EOF
+
+	gcc -shared -fPIC \
+		-I "$RGFW_SRC_DIR" \
+		-o "$RGFW_SRC_DIR/libRGFW.dylib" \
+		"$RGFW_SRC_DIR/rgfw_wrapper.c" \
+		-framework Cocoa -framework CoreVideo -framework OpenGL -framework IOKit \
+		2>&1 | tee "$PLATFORM_BUILD_DIR/rgfw_build.log"
+
+	if [ ! -f "$RGFW_SRC_DIR/libRGFW.dylib" ]; then
+		echo "✗ Failed to build libRGFW.dylib"
+		echo "See build log: $PLATFORM_BUILD_DIR/rgfw_build.log"
+		exit 1
+	fi
+
+	cp "$RGFW_SRC_DIR/libRGFW.dylib" "$PLATFORM_BUILD_DIR/$SHARED_LIB"
+	;;
+MINGW* | MSYS* | CYGWIN*)
+	# Build RGFW for Windows
+	cat >"$RGFW_SRC_DIR/rgfw_wrapper.c" <<'EOF'
+#define RGFW_IMPLEMENTATION
+#include "RGFW.h"
+EOF
+
+	gcc -shared \
+		-I "$RGFW_SRC_DIR" \
+		-o "$RGFW_SRC_DIR/RGFW.dll" \
+		"$RGFW_SRC_DIR/rgfw_wrapper.c" \
+		-lopengl32 -lgdi32 -lshell32 -lwinmm -ldwmapi \
+		2>&1 | tee "$PLATFORM_BUILD_DIR/rgfw_build.log"
+
+	if [ ! -f "$RGFW_SRC_DIR/RGFW.dll" ]; then
+		echo "✗ Failed to build RGFW.dll"
+		echo "See build log: $PLATFORM_BUILD_DIR/rgfw_build.log"
+		exit 1
+	fi
+
+	cp "$RGFW_SRC_DIR/RGFW.dll" "$PLATFORM_BUILD_DIR/$SHARED_LIB"
+	;;
 esac
 
 if [ -f "$PLATFORM_BUILD_DIR/$SHARED_LIB" ]; then
-    echo "✓ Shared library created: $PLATFORM_BUILD_DIR/$SHARED_LIB"
-    ls -lh "$PLATFORM_BUILD_DIR/$SHARED_LIB"
+	echo "✓ Shared library created: $PLATFORM_BUILD_DIR/$SHARED_LIB"
+	ls -lh "$PLATFORM_BUILD_DIR/$SHARED_LIB"
 else
-    echo "✗ Failed to create shared library"
-    exit 1
+	echo "✗ Failed to create shared library"
+	exit 1
 fi
 
 # Copy library directly to resources directory
@@ -214,3 +246,6 @@ echo "✓ Library copied to: $RESOURCES_DIR/$SHARED_LIB"
 echo ""
 echo "Build complete!"
 echo "Library location: $RESOURCES_DIR/$SHARED_LIB"
+echo ""
+echo "Note: To use the library in tests, add to gradle.properties:"
+echo "  org.gradle.jvmargs=-Djava.library.path=$RESOURCES_DIR"

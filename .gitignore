@@ -10,5 +10,5 @@ bin/
 
 *.zip
 
-glfw-build/
-glfw-src/
+ul-gfx-native/native/*
+hs_err_*
