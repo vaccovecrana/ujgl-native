@@ -87,6 +87,9 @@ public class UlRgfwContext {
           }
         }
       } finally {
+        // Call onWindowClose to clean-up resources BEFORE destroying window
+        // This handles both user-initiated close AND programmatic loop exit
+        client.onWindowClose(window);
         windowClose(window);
       }
     }

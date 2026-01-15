@@ -271,20 +271,4 @@ public class UlRgfwFunctions {
     }
   }
 
-  public static void setViewportDestination(MemorySegment window, int logicalWidth, int logicalHeight) {
-    try {
-      RGFW_window_setViewportDestination.invoke(window, logicalWidth, logicalHeight);
-    } catch (Throwable e) {
-      throw new RuntimeException("Failed to set viewport destination", e);
-    }
-  }
-
-  public static int createVulkanSurface(MemorySegment window, MemorySegment instance, MemorySegment pSurface) {
-    try {
-      return (int) RGFW_window_createSurface_Vulkan.invoke(window, instance, pSurface);
-    } catch (Throwable e) {
-      throw new RuntimeException("Failed to create Vulkan surface", e);
-    }
-  }
-
 }
