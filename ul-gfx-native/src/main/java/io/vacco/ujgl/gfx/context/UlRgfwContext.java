@@ -7,6 +7,7 @@ import io.vacco.ujgl.gfx.rgfw.RGFW_windowResizedfunc;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.vacco.ujgl.gfx.context.UlRgfwFunctions.*;
 
@@ -49,8 +50,13 @@ public class UlRgfwContext {
       );
       setScaleUpdatedCallback(scaleCallback);
 
+      var closeNotified = new AtomicBoolean(false);
       var quitCallback = RGFW_windowQuitfunc.allocate(
-        client::onWindowClose,
+        win -> {
+          if (closeNotified.compareAndSet(false, true)) {
+            client.onWindowClose(win);
+          }
+        },
         arena
       );
       setWindowQuitCallback(quitCallback);
@@ -89,7 +95,9 @@ public class UlRgfwContext {
       } finally {
         // Call onWindowClose to clean-up resources BEFORE destroying window
         // This handles both user-initiated close AND programmatic loop exit
-        client.onWindowClose(window);
+        if (closeNotified.compareAndSet(false, true)) {
+          client.onWindowClose(window);
+        }
         windowClose(window);
       }
     }

@@ -26,6 +26,7 @@ public class UlRgfwClientTest {
       it("should create window and call onWindowReady", () -> {
         var readyCalled = new AtomicBoolean(false);
         var renderCount = new AtomicInteger(0);
+        var closeCount = new AtomicInteger(0);
         var client = new UlRgfwClient() {
           @Override
           public void onWindowReady(MemorySegment window, int width, int height) {
@@ -55,6 +56,7 @@ public class UlRgfwClientTest {
 
           @Override
           public boolean onWindowClose(MemorySegment window) {
+            closeCount.incrementAndGet();
             System.out.println("window close");
             return true;
           }
@@ -62,6 +64,7 @@ public class UlRgfwClientTest {
 
         UlRgfwContext.runWithWindow(640, 480, "Test Window", client);
         assertTrue("onWindowReady should be called", readyCalled.get());
+        assertEquals("onWindowClose should be called once", 1, closeCount.get());
       });
 
       it("should call onRender in a loop until false returned", () -> {
